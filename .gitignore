@@ -1,0 +1,38 @@
+# Backend secrets and generated files
+lms-backend/.env
+lms-backend/node_modules/
+lms-backend/.npm/
+
+# Flutter/Dart generated files
+secure_learning/.dart_tool/
+secure_learning/build/
+secure_learning/.flutter-plugins
+secure_learning/.flutter-plugins-dependencies
+secure_learning/ios/Flutter/.last_build_id
+secure_learning/android/.gradle/
+secure_learning/android/app/build/
+secure_learning/ios/Pods/
+secure_learning/ios/.symlinks/
+
+# IDE and OS files
+**/.idea/
+**/.vscode/
+**/*.iml
+.DS_Store
+Thumbs.db
+
+# Local credentials and signing material
+**/client_secret*.json
+**/google-services.json
+**/GoogleService-Info.plist
+**/key.properties
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.pem
+**/.env
+**/.env.*
+!**/.env.example
+
+# Separate testing workspace
+testing/
