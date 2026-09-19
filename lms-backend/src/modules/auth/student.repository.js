@@ -2,6 +2,7 @@ const databaseUrl = process.env.DATABASE_URL?.trim();
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 const hasPlaceholderKey = !serviceRoleKey || serviceRoleKey.startsWith('replace-with-');
 const otpTableUrl = databaseUrl?.replace(/\/Student\/?$/, '/student_email_otps');
+const adminPresenceUrl = databaseUrl?.replace(/\/Student\/?$/, '/admin_presence');
 
 if (!databaseUrl || hasPlaceholderKey) {
   console.warn('DATABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for student auth.');
@@ -111,4 +112,24 @@ export async function updateLastLogin(username) {
     method: 'PATCH',
     body: JSON.stringify({ last_login_at: new Date().toISOString() }),
   });
+}
+
+export async function upsertAdminPresence({ username, deviceName, isOnline = true }) {
+  try {
+    await supabaseRequest('', {
+      method: 'POST',
+      prefer: 'resolution=merge-duplicates,return=minimal',
+      body: JSON.stringify({
+        admin_username: username,
+        device_name: deviceName ?? null,
+        is_online: isOnline,
+        last_seen_at: new Date().toISOString(),
+      }),
+    }, adminPresenceUrl);
+  } catch (err) {
+    // Table public.admin_presence is optional in Supabase
+    if (process.env.DEBUG_PRESENCE) {
+      console.warn(`Admin presence table notice: ${err.message}`);
+    }
+  }
 }

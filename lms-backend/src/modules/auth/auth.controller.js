@@ -10,13 +10,27 @@ import {
   markEmailOtpUsed,
   saveEmailOtp,
   updateLastLogin,
+  upsertAdminPresence,
 } from './student.repository.js';
 import { createOtp, sendOtpEmail, verifyOtp } from './otp.service.js';
 import {
   signAccessToken,
+  signAdminAccessToken,
+  signAdminRefreshToken,
   signRefreshToken,
   verifyRefreshToken,
 } from '../../services/token.service.js';
+
+function setAuthCookies(response, accessToken, refreshToken) {
+  const options = {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  };
+
+  response.cookie('access_token', accessToken, { ...options, maxAge: 15 * 60 * 1000 });
+  response.cookie('refresh_token', refreshToken, { ...options, maxAge: 30 * 24 * 60 * 60 * 1000 });
+}
 
 const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
 
@@ -162,11 +176,14 @@ export async function login(request, response, next) {
 
     await updateLastLogin(student.username);
     const accessToken = signAccessToken(student);
+    const refreshToken = signRefreshToken(student);
+
+    setAuthCookies(response, accessToken, refreshToken);
 
     return response.json({
       message: 'Login successful.',
       accessToken,
-      refreshToken: signRefreshToken(student),
+      refreshToken,
       token: accessToken,
       student: publicStudent(student),
     });
@@ -175,9 +192,57 @@ export async function login(request, response, next) {
   }
 }
 
+export async function adminLogin(request, response, next) {
+  try {
+    const username = request.body.username?.trim();
+    const password = request.body.password;
+    if (!username || typeof password !== 'string') {
+      return response.status(400).json({ message: 'Username and password are required.' });
+    }
+    if (username !== process.env.ADMIN_USERNAME || password !== process.env.ADMIN_PASSWORD) {
+      return response.status(401).json({ message: 'Invalid admin username or password.' });
+    }
+
+    const accessToken = signAdminAccessToken(username);
+    const refreshToken = signAdminRefreshToken(username);
+    try {
+      await upsertAdminPresence({
+        username,
+        deviceName: request.headers['user-agent'],
+      });
+    } catch (error) {
+      console.warn(`Admin presence unavailable: ${error.message}`);
+    }
+    setAuthCookies(response, accessToken, refreshToken);
+    return response.json({
+      message: 'Admin login successful.',
+      accessToken,
+      refreshToken,
+      admin: { username, role: 'admin' },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function adminHeartbeat(request, response, next) {
+  try {
+    if (request.user?.role !== 'admin') {
+      return response.status(403).json({ message: 'Admin access is required.' });
+    }
+    await upsertAdminPresence({
+      username: request.user.username,
+      deviceName: request.headers['user-agent'],
+    });
+    return response.json({ online: true, lastSeenAt: new Date().toISOString() });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export async function refresh(request, response, next) {
   try {
-    const { refreshToken } = request.body;
+    const refreshToken = request.body.refreshToken ?? request.cookies.refresh_token;
     if (typeof refreshToken !== 'string' || !refreshToken) {
       return response.status(400).json({ message: 'Refresh token is required.' });
     }
@@ -192,9 +257,13 @@ export async function refresh(request, response, next) {
       return response.status(401).json({ message: 'Student account is not active.' });
     }
 
+    const accessToken = signAccessToken(student);
+    const nextRefreshToken = signRefreshToken(student);
+    setAuthCookies(response, accessToken, nextRefreshToken);
+
     return response.json({
-      accessToken: signAccessToken(student),
-      refreshToken: signRefreshToken(student),
+      accessToken,
+      refreshToken: nextRefreshToken,
     });
   } catch (error) {
     if (error.name === 'TokenExpiredError' || error.name === 'JsonWebTokenError') {
@@ -203,3 +272,24 @@ export async function refresh(request, response, next) {
     return next(error);
   }
 }
+
+export async function getProfile(request, response, next) {
+  try {
+    const username = request.user?.username;
+    if (!username) {
+      return response.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const student = await findStudentByUsername(username);
+    if (!student) {
+      return response.status(404).json({ message: 'Student profile not found.' });
+    }
+
+    return response.json({
+      student: publicStudent(student),
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+

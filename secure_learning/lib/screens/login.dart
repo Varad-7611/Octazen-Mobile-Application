@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_api.dart';
+import 'admin/admin_home.dart';
+import 'ForgotPasswordScreen.dart';
 import 'homeScreen.dart';
 import 'signup.dart';
 import 'splash.dart';
@@ -162,7 +164,16 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorMessage = null;
     });
     try {
-      await AuthApi.login(username: username, password: password);
+      try {
+        await AuthApi.adminLogin(username: username, password: password);
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(builder: (_) => const AdminHomeScreen()),
+        );
+        return;
+      } on AuthApiException {
+        await AuthApi.login(username: username, password: password);
+      }
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
@@ -222,7 +233,7 @@ class _LoginCard extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         const Text(
-          'Use the username and password given by your\ninstitute',
+          'Use the username and password given by your institute',
           style: TextStyle(
             fontSize: 14,
             height: 1.45,
@@ -301,18 +312,25 @@ class _LoginCard extends StatelessWidget {
             ),
           ),
         ),
-        const Center(
-          child: Text.rich(
-            TextSpan(
-              style: TextStyle(color: Color(0xFF3781AA), fontSize: 13),
-              children: [
-                TextSpan(text: 'Forgot password?'),
-                TextSpan(
-                  text: '  •  ',
-                  style: TextStyle(color: Color(0xFFB2BAC4)),
-                ),
-                TextSpan(text: 'Contact your institute'),
-              ],
+        Center(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ForgotPasswordScreen(),
+              ),
+            ),
+            child: const Text.rich(
+              TextSpan(
+                style: TextStyle(color: Color(0xFF3781AA), fontSize: 13),
+                children: [
+                  TextSpan(text: 'Forgot password?'),
+                  TextSpan(
+                    text: '  •  ',
+                    style: TextStyle(color: Color(0xFFB2BAC4)),
+                  ),
+                  TextSpan(text: 'Contact your institute'),
+                ],
+              ),
             ),
           ),
         ),

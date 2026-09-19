@@ -1,7 +1,8 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'api_config.dart';
+import 'auth_http_client_stub.dart'
+    if (dart.library.html) 'auth_http_client_web.dart';
 
 class AuthApiException implements Exception {
   const AuthApiException(this.message);
@@ -15,14 +16,14 @@ class AuthApiException implements Exception {
 class AuthApi {
   const AuthApi._();
 
-  static String get _baseUrl {
-    const configuredUrl = String.fromEnvironment('API_BASE_URL');
-    if (configuredUrl.isNotEmpty) return configuredUrl;
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:5000/api';
-    }
-    return 'http://127.0.0.1:5000/api';
-  }
+  static String? _adminAccessToken;
+  static String? _studentAccessToken;
+  static Map<String, dynamic>? _cachedStudent;
+
+  static String? get studentAccessToken => _studentAccessToken;
+  static Map<String, dynamic>? get cachedStudent => _cachedStudent;
+
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   static Future<Map<String, dynamic>> signup({
     required String fullName,
@@ -43,7 +44,34 @@ class AuthApi {
   static Future<Map<String, dynamic>> login({
     required String username,
     required String password,
-  }) => _post('/auth/login', {'username': username, 'password': password});
+  }) async {
+    final response = await _post('/auth/login', {
+      'username': username,
+      'password': password,
+    });
+    _studentAccessToken =
+        response['accessToken'] as String? ?? response['token'] as String?;
+    if (response['student'] != null) {
+      _cachedStudent = response['student'] as Map<String, dynamic>;
+    }
+    return response;
+  }
+
+  static Future<Map<String, dynamic>> adminLogin({
+    required String username,
+    required String password,
+  }) async {
+    final response = await _post('/auth/admin-login', {
+      'username': username,
+      'password': password,
+    });
+    _adminAccessToken = response['accessToken'] as String?;
+    return response;
+  }
+
+  static Future<void> adminHeartbeat() async {
+    await _post('/auth/admin-heartbeat', const {}, token: _adminAccessToken);
+  }
 
   static Future<Map<String, dynamic>> verifyEmail({
     required String username,
@@ -53,14 +81,59 @@ class AuthApi {
   static Future<Map<String, dynamic>> resendEmail({required String username}) =>
       _post('/auth/resend-email', {'username': username});
 
+  static Future<Map<String, dynamic>> getProfile() async {
+    final response = await _get('/auth/me', token: _studentAccessToken);
+    if (response['student'] != null) {
+      _cachedStudent = response['student'] as Map<String, dynamic>;
+    }
+    return response;
+  }
+
+  static void logout() {
+    _studentAccessToken = null;
+    _cachedStudent = null;
+    _adminAccessToken = null;
+  }
+
+  static Future<Map<String, dynamic>> _get(String path, {String? token}) async {
+    final client = createAuthHttpClient();
+    try {
+      final response = await client.get(
+        Uri.parse('$_baseUrl$path'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AuthApiException(data['message'] as String? ?? 'Request failed.');
+      }
+      return data;
+    } on AuthApiException {
+      rethrow;
+    } on Exception {
+      throw const AuthApiException(
+        'Unable to reach the server. Check that the backend is running.',
+      );
+    } finally {
+      client.close();
+    }
+  }
+
   static Future<Map<String, dynamic>> _post(
     String path,
-    Map<String, String> body,
-  ) async {
+    Map<String, String> body, {
+    String? token,
+  }) async {
+    final client = createAuthHttpClient();
     try {
-      final response = await http.post(
+      final response = await client.post(
         Uri.parse('$_baseUrl$path'),
-        headers: const {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
         body: jsonEncode(body),
       );
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -74,6 +147,8 @@ class AuthApi {
       throw const AuthApiException(
         'Unable to reach the server. Check that the backend is running.',
       );
+    } finally {
+      client.close();
     }
   }
 }

@@ -1,0 +1,26 @@
+{
+  "enrollments": {
+    "1": [
+      1
+    ],
+    "7": [
+      10
+    ],
+    "default_student": [
+      1
+    ]
+  },
+  "videoProgress": {
+    "7": {
+      "13": {
+        "videoId": 13,
+        "studentId": "7",
+        "watchedSeconds": 11,
+        "totalSeconds": 30,
+        "percentage": 37,
+        "completed": false,
+        "updatedAt": "2026-09-18T13:30:13.868Z"
+      }
+    }
+  }
+}
